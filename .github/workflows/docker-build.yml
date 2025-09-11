@@ -32,4 +32,5 @@ jobs:
           context: "./"
           file: Dockerfile
           push: true
+          no-cache: true
           tags: registry.darmstadt-1.cloud.gcore.dev/59508-197526-120-infra/aptenbot:${{ github.ref_name }}

@@ -1,0 +1,55 @@
+import os
+from pathlib import Path
+from instagrapi import Client
+from utils.logging_config import logger
+
+IG_USERNAME = os.getenv("IG_USERNAME")
+IG_PASSWORD = os.getenv("IG_PASSWORD")
+SESSION_FILE = os.getenv("INSTAGRAPI_SESSION_FILE", "/tmp/instagrapi_session.json")
+CHALLENGE_CODE = os.getenv("IG_CHALLENGE_CODE")
+
+class InstagrapiClient:
+    def __init__(self) -> None:
+        self.client = Client()
+        self._logged_in = False
+        self._ensure_login()
+
+    def _challenge_code_handler(self, username: str, choice: str) -> str:
+        if CHALLENGE_CODE:
+            logger.info("Using IG_CHALLENGE_CODE from environment for challenge.")
+            return CHALLENGE_CODE
+        raise Exception(
+            "Instagram requires a verification code (checkpoint). Set IG_CHALLENGE_CODE env var and retry."
+        )
+
+    def _ensure_login(self) -> None:
+        if self._logged_in:
+            return
+        if not IG_USERNAME or not IG_PASSWORD:
+            logger.warning("IG_USERNAME/IG_PASSWORD not provided; proceeding unauthenticated")
+            return
+        try:
+            session_path = Path(SESSION_FILE)
+            if session_path.exists():
+                logger.info(f"Loading Instagrapi session from {SESSION_FILE}")
+                self.client.load_settings(SESSION_FILE)
+                self.client.login(IG_USERNAME, IG_PASSWORD)
+            else:
+                self.client.challenge_code_handler = self._challenge_code_handler
+                logger.info("Logging in to Instagram via Instagrapi")
+                self.client.login(IG_USERNAME, IG_PASSWORD)
+                session_path.parent.mkdir(parents=True, exist_ok=True)
+                self.client.dump_settings(SESSION_FILE)
+            self._logged_in = True
+        except Exception as e:
+            logger.error(f"Instagram login failed: {e}")
+
+    def download_video(self, url: str) -> tuple[bool, str]:
+        try:
+            self._ensure_login()
+            media_pk = self.client.media_pk_from_url(url)
+            path = self.client.video_download(media_pk, folder="/tmp")
+            return True, path
+        except Exception as e:
+            logger.error(f"Instagrapi video download failed: {e}")
+            return False, str(e)

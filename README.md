@@ -24,8 +24,7 @@ project/
 │   ├── openai_client.py     # OpenAI API integration
 │   ├── claude_client.py     # Claude API integration
 │   ├── flux_client.py       # Image generation API
-│   ├── instaloader.py       # Instagram content downloader
-│   └── ig_client.py         # Instagram GraphQL facade
+│   └── instagrapi_client.py # Instagram content downloader
 ├── redis_client.py          # Redis Sentinel connector
 ├── session_store.py         # Redis-based Instagram session cache
 ├── routers/                 # Message routers

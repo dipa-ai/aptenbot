@@ -138,9 +138,16 @@ class InstaloaderClient:
             # If a checkpoint is required or any login-side error occurs, surface a friendly message
             msg = str(e)
             if "Checkpoint required" in msg:
+                logger.error(f"Instagram checkpoint required: {msg}")
+                import re
+                match = re.search(r"https://www\.instagram\.com/challenge/\S+", msg)
+                if match:
+                    url_hint = f"Open this URL in a browser and retry: {match.group(0)}"
+                else:
+                    url_hint = "Open the challenge URL from logs in a browser and retry."
                 return False, (
                     "Instagram requires verification (checkpoint). "
-                    "Open the challenge URL from logs in a browser, complete the steps, and retry."
+                    f"{url_hint}"
                 )
             logger.warning(f"Proceeding without IG login due to error: {e}")
 

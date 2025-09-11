@@ -1,80 +1,34 @@
-import asyncio
-import httpx
-import instaloader
-from typing import Any, Dict
-
-from utils.settings import IG_USERNAME, IG_PASSWORD, IG_LOGIN_TIMEOUT_SEC
-from utils.session_store import IgSessionStore
 from utils.logging_config import logger
-
+from .instaloader import get_instaloader_client
 
 class IgClient:
-    GRAPHQL_URL = "https://www.instagram.com/graphql/query/"
+    def __init__(self):
+        self._client = None
 
-    def __init__(self, store: IgSessionStore):
-        self.store = store
-        self.loader = instaloader.Instaloader(
-            download_comments=False,
-            download_geotags=False,
-            download_pictures=False,
-            download_video_thumbnails=False,
-            save_metadata=False,
-        )
-        self.context = self.loader.context
-        self._loaded = False
+    async def _get_client(self):
+        if self._client is None:
+            self._client = await get_instaloader_client()
+        return self._client
 
-    async def ensure_session(self) -> None:
-        if self._loaded:
-            return
-        data = await self.store.get_session(IG_USERNAME)
-        if data:
-            self.context.load_session_from_dict(IG_USERNAME, data["cookies"])
-            await self.store.touch(IG_USERNAME)
-            self._loaded = True
-            return
-        lock = await self.store.acquire_lock()
+    async def download_video(self, url: str) -> tuple[bool, str]:
+        """
+        Downloads an Instagram video from the given URL.
+
+        Args:
+            url: The URL of the Instagram post.
+
+        Returns:
+            A tuple containing a boolean indicating success and a string with the file path or error message.
+        """
+        logger.info(f"Received request to download Instagram video: {url}")
         try:
-            data = await self.store.get_session(IG_USERNAME)
-            if data:
-                self.context.load_session_from_dict(IG_USERNAME, data["cookies"])
+            client = await self._get_client()
+            success, result = await client.download_video(url)
+            if success:
+                logger.info(f"Successfully downloaded video to: {result}")
             else:
-                await self.login()
-        finally:
-            await lock.release()
-        self._loaded = True
-
-    async def login(self) -> None:
-        logger.info("Logging in to Instagram")
-
-        def _login() -> Dict[str, Any]:
-            self.loader.login(IG_USERNAME, IG_PASSWORD)
-            return self.context.save_session()
-
-        cookies = await asyncio.wait_for(
-            asyncio.to_thread(_login), timeout=IG_LOGIN_TIMEOUT_SEC
-        )
-
-        session_data = {
-            "sessionid": self.context._session.cookies.get("sessionid"),
-            "csrftoken": self.context._session.cookies.get("csrftoken"),
-            "ds_user_id": self.context._session.cookies.get("ds_user_id"),
-            "cookies": cookies,
-        }
-        await self.store.save_session(IG_USERNAME, session_data)
-
-    async def graphql(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        await self.ensure_session()
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            client.cookies.update(self.context._session.cookies.get_dict())
-            resp = await client.get(self.GRAPHQL_URL, params=params)
-            if resp.status_code in (401, 403):
-                logger.warning("Received %s from Instagram", resp.status_code)
-                await self.store.redis.delete(
-                    f"ig:session:{IG_USERNAME}"
-                )
-                self._loaded = False
-                await self.ensure_session()
-                resp = await client.get(self.GRAPHQL_URL, params=params)
-            await self.store.touch(IG_USERNAME)
-            resp.raise_for_status()
-            return resp.json()
+                logger.error(f"Failed to download video: {result}")
+            return success, result
+        except Exception as e:
+            logger.critical(f"An unexpected error occurred in IgClient: {e}")
+            return False, f"An unexpected critical error occurred: {e}"

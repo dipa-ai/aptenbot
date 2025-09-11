@@ -296,7 +296,7 @@ async def handle_img_command(message: Message, openai_client, flux_client, sessi
         await message.answer(f"Error generating image: {str(e)}")
 
 @router.message(Command("insta"))
-async def cmd_insta(message: Message, ig_client):
+async def cmd_insta(message: Message, instaloader_client):
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
         await message.answer("Usage: /insta <link to instagram video>")
@@ -308,7 +308,7 @@ async def cmd_insta(message: Message, ig_client):
         await message.answer("Please provide a valid Instagram URL")
         return
     instagram_url = match.group(0)
-    ok, path = await ig_client.download_video(instagram_url)
+    ok, path = await instaloader_client.download_video(instagram_url)
     if not ok:
         await message.answer(f"Something went wrong: {path}")
         return

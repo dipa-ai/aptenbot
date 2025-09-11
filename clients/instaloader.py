@@ -19,6 +19,9 @@ try:
 except Exception:
     _HAS_REDIS = False
 
+import asyncio
+
+
 class InstaloaderClient:
     def __init__(self):
         self.loader = instaloader.Instaloader(
@@ -34,10 +37,18 @@ class InstaloaderClient:
             self._session_file = SESSION_FILE_ENV
         else:
             self._session_file = f".instaloader_session_{IG_USERNAME}" if IG_USERNAME else None
-        # Try to load cookies from Redis or environment (no interactive login required)
-        self._try_load_redis_cookies()
-        self._try_load_env_cookies()
         # Do NOT auto-login on startup; defer until needed to avoid crashing the bot
+
+    @classmethod
+    async def create(cls):
+        client = cls()
+        await client._load_cookies()
+        return client
+
+    async def _load_cookies(self):
+        await self._load_redis_cookies()
+        if not self._logged_in:
+            self._load_env_cookies()
 
     def _apply_cookies_to_context(self, cookies: dict) -> None:
         try:
@@ -50,25 +61,19 @@ class InstaloaderClient:
         except Exception as e:
             logger.warning(f"Failed to apply cookies to Instaloader context: {e}")
 
-    def _try_load_redis_cookies(self) -> None:
+    async def _load_redis_cookies(self) -> None:
         if not _HAS_REDIS or not IG_USERNAME:
             return
         try:
             redis = RedisClient().get_master()
             store = IgSessionStore(redis)
-            # IgSessionStore stores a dict with keys: sessionid, csrftoken, ds_user_id, cookies
-            # We prefer explicit cookie values and fallback to cookies dict
-            import asyncio
-            async def _fetch():
-                return await store.get_session(IG_USERNAME)
-            data = asyncio.get_event_loop().run_until_complete(_fetch())
+            data = await store.get_session(IG_USERNAME)
             if data and isinstance(data, dict):
                 cookies = {
                     "sessionid": data.get("sessionid"),
                     "csrftoken": data.get("csrftoken"),
                     "ds_user_id": data.get("ds_user_id"),
                 }
-                # If full cookies dict is present, merge
                 if isinstance(data.get("cookies"), dict):
                     cookies.update(data["cookies"])
                 self._apply_cookies_to_context(cookies)
@@ -77,7 +82,7 @@ class InstaloaderClient:
         except Exception as e:
             logger.warning(f"Failed to load IG cookies from Redis: {e}")
 
-    def _try_load_env_cookies(self) -> None:
+    def _load_env_cookies(self) -> None:
         if IG_SESSIONID:
             try:
                 cookies = {
@@ -127,13 +132,13 @@ class InstaloaderClient:
             logger.warning(f"Failed to save IG session file: {e}")
         self._logged_in = True
 
-    def download_video(self, url: str) -> tuple[bool, str]:
+    async def download_video(self, url: str) -> tuple[bool, str]:
         if not url:
             return False, "Invalid URL provided"
 
         # Ensure we are authenticated before attempting to access post data
         try:
-            self._ensure_login()
+            await asyncio.to_thread(self._ensure_login)
         except Exception as e:
             # If a checkpoint is required or any login-side error occurs, surface a friendly message
             msg = str(e)
@@ -170,7 +175,7 @@ class InstaloaderClient:
                 return False, "no file exists"
 
         try:
-            return _do_download()
+            return await asyncio.to_thread(_do_download)
         except Exception as e:
             msg = str(e)
             logger.warning(f"Download failed on first attempt: {msg}")
@@ -185,11 +190,10 @@ class InstaloaderClient:
                 self._logged_in = False
                 try:
                     # Try Redis/env cookies again before login
-                    self._try_load_redis_cookies()
-                    self._try_load_env_cookies()
+                    await self._load_cookies()
                     if not self._logged_in:
-                        self._ensure_login()
-                    return _do_download()
+                        await asyncio.to_thread(self._ensure_login)
+                    return await asyncio.to_thread(_do_download)
                 except Exception as e2:
                     if "Checkpoint required" in str(e2):
                         return False, (

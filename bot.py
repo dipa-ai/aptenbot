@@ -39,7 +39,7 @@ async def main():
     gemini_client = GeminiClient()
     grok_client = GrokClient()
     flux_client = FluxClient()
-    instaloader_client = InstaloaderClient()
+    instaloader_client = await InstaloaderClient.create()
 
     # Register dependencies
     dp["session_manager"] = session_manager

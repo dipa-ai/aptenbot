@@ -308,7 +308,7 @@ async def cmd_insta(message: Message, instaloader_client):
         await message.answer("Please provide a valid Instagram URL")
         return
     instagram_url = match.group(0)
-    ok, path = instaloader_client.download_video(instagram_url)
+    ok, path = await instaloader_client.download_video(instagram_url)
     if not ok:
         await message.answer(f"Something went wrong: {path}")
         return

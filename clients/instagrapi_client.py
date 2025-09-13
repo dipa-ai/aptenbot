@@ -35,7 +35,6 @@ class InstagrapiClient:
                 self.client.load_settings(session_path)
                 self.client.login(IG_USERNAME, IG_PASSWORD)
                 logger.info("Instagram login successful using session.")
-                logger.info(f"Logged in with user ID: {self.client.user_id}")
             else:
                 logger.info("Session file not found, performing fresh login.")
                 self.client.challenge_code_handler = self._challenge_code_handler
@@ -43,7 +42,6 @@ class InstagrapiClient:
                 session_path.parent.mkdir(parents=True, exist_ok=True)
                 self.client.dump_settings(SESSION_FILE)
                 logger.info("Fresh Instagram login successful and session saved.")
-                logger.info(f"Logged in with user ID: {self.client.user_id}")
             self._logged_in = True
         except Exception as e:
             logger.warning(f"Instagram login with session failed: {e}. Attempting fresh login.")
@@ -62,15 +60,7 @@ class InstagrapiClient:
     def download_video(self, url: str) -> tuple[bool, str]:
         try:
             self._ensure_login()
-            from urllib.parse import urlparse
-            path = urlparse(url).path
-            parts = [part for part in path.split('/') if part]
-            if len(parts) > 1:
-                shortcode = parts[1]
-                media_pk = self.client.media_pk_from_code(shortcode)
-            else:
-                media_pk = self.client.media_pk_from_url(url)
-            media_info = self.client.media_info(media_pk)
+            media_info = self.client.media_info_by_url(url)
 
             video_pk_to_download = None
             if media_info.media_type == 2:  # Video

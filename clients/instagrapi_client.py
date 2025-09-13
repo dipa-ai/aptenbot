@@ -62,7 +62,14 @@ class InstagrapiClient:
     def download_video(self, url: str) -> tuple[bool, str]:
         try:
             self._ensure_login()
-            media_pk = self.client.media_pk_from_url(url)
+            from urllib.parse import urlparse
+            path = urlparse(url).path
+            parts = [part for part in path.split('/') if part]
+            if len(parts) > 1:
+                shortcode = parts[1]
+                media_pk = self.client.media_pk_from_code(shortcode)
+            else:
+                media_pk = self.client.media_pk_from_url(url)
             media_info = self.client.media_info(media_pk)
 
             video_pk_to_download = None

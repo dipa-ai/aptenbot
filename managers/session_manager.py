@@ -169,22 +169,21 @@ class Session:
         # Use model from session or client config
         model_id = self.get_model()
 
-        # Prepare messages for the Responses API
-        formatted_messages = []
+        # Prepare messages for Responses API (role-content pairs)
+        input_items = []
         for m in messages:
             if m["role"] in ("user", "assistant", "developer"):
                 role = "system" if m["role"] == "developer" else m["role"]
-                formatted_messages.append({"role": role, "content": m["content"]})
-
-        kwargs = {"model": model_id, "input": formatted_messages}
-        if model_id in OPENAI_MODELS_REASONING or model_id.startswith("o"):
-            kwargs["reasoning"] = {"effort": "medium"}
+                input_items.append({"role": role, "content": m["content"]})
 
         try:
             async with openai_client.get_client() as client:
-                response = await client.responses.create(**kwargs)
+                response = await client.responses.create(
+                    model=model_id,
+                    input=input_items
+                )
 
-            assistant_message = response.output[0].content[0].text
+            assistant_message = response.output_text
 
             messages.append({"role": "assistant", "content": assistant_message})
             self.data['messages'] = messages

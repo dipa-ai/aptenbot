@@ -61,8 +61,23 @@ class InstagrapiClient:
         try:
             self._ensure_login()
             media_pk = self.client.media_pk_from_url(url)
-            path = self.client.video_download(media_pk, folder="/tmp")
-            return True, path
+            media_info = self.client.media_info(media_pk)
+
+            video_pk_to_download = None
+            if media_info.media_type == 2:  # Video
+                video_pk_to_download = media_info.pk
+            elif media_info.media_type == 8:  # Carousel
+                for resource in media_info.resources:
+                    if resource.media_type == 2:
+                        video_pk_to_download = resource.pk
+                        break  # download first video in carousel
+
+            if video_pk_to_download:
+                path = self.client.video_download(video_pk_to_download, folder="/tmp")
+                return True, str(path)
+            else:
+                return False, "No video found in the post."
+
         except Exception as e:
             logger.error(f"Instagrapi video download failed: {e}")
             return False, str(e)

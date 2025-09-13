@@ -11,7 +11,7 @@ from clients.claude_client import ClaudeClient
 from clients.gemini_client import GeminiClient
 from clients.grok_client import GrokClient
 from clients.flux_client import FluxClient
-from clients.instaloader import InstaloaderClient
+from clients.instagrapi_client import InstagrapiClient
 from routers import commands_router, messages_router, media_router
 from middlewares.subscription import SubscriptionMiddleware
 from middlewares.logging import LoggingMiddleware
@@ -39,7 +39,7 @@ async def main():
     gemini_client = GeminiClient()
     grok_client = GrokClient()
     flux_client = FluxClient()
-    instaloader_client = InstaloaderClient()
+    instagram_client = InstagrapiClient()
 
     # Register dependencies
     dp["session_manager"] = session_manager
@@ -49,7 +49,7 @@ async def main():
     dp["gemini_client"] = gemini_client
     dp["grok_client"] = grok_client
     dp["flux_client"] = flux_client
-    dp["instaloader_client"] = instaloader_client
+    dp["instagram_client"] = instagram_client
 
     # Middlewares
     dp.message.middleware(LoggingMiddleware())
@@ -63,7 +63,7 @@ async def main():
         gemini_client=gemini_client,
         grok_client=grok_client,
         flux_client=flux_client,
-        instaloader_client=instaloader_client
+        instagram_client=instagram_client
     )
     dp.message.middleware(dependency_middleware)
 

@@ -32,17 +32,30 @@ class InstagrapiClient:
             session_path = Path(SESSION_FILE)
             if session_path.exists():
                 logger.info(f"Loading Instagrapi session from {SESSION_FILE}")
-                self.client.load_settings(SESSION_FILE)
+                self.client.load_settings(session_path)
                 self.client.login(IG_USERNAME, IG_PASSWORD)
+                logger.info("Instagram login successful using session.")
             else:
+                logger.info("Session file not found, performing fresh login.")
                 self.client.challenge_code_handler = self._challenge_code_handler
-                logger.info("Logging in to Instagram via Instagrapi")
                 self.client.login(IG_USERNAME, IG_PASSWORD)
                 session_path.parent.mkdir(parents=True, exist_ok=True)
                 self.client.dump_settings(SESSION_FILE)
+                logger.info("Fresh Instagram login successful and session saved.")
             self._logged_in = True
         except Exception as e:
-            logger.error(f"Instagram login failed: {e}")
+            logger.warning(f"Instagram login with session failed: {e}. Attempting fresh login.")
+            try:
+                self.client = Client()
+                self.client.challenge_code_handler = self._challenge_code_handler
+                self.client.login(IG_USERNAME, IG_PASSWORD)
+                session_path = Path(SESSION_FILE)
+                session_path.parent.mkdir(parents=True, exist_ok=True)
+                self.client.dump_settings(SESSION_FILE)
+                self._logged_in = True
+                logger.info("Fresh Instagram login successful after session failure.")
+            except Exception as e2:
+                logger.error(f"Instagram fresh login failed: {e2}")
 
     def download_video(self, url: str) -> tuple[bool, str]:
         try:

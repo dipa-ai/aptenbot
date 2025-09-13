@@ -1,7 +1,16 @@
 import asyncio
 import time
 from typing import Dict, List, Union, Optional
-from config import SESSION_EXPIRY, OPENAI_MODEL, ANTHROPIC_MODEL, GEMINI_MODEL, GROK_MODEL, SYSTEM_PROMPT, DEFAULT_MODEL_PROVIDER
+from config import (
+    SESSION_EXPIRY,
+    OPENAI_MODEL,
+    ANTHROPIC_MODEL,
+    GEMINI_MODEL,
+    GROK_MODEL,
+    SYSTEM_PROMPT,
+    DEFAULT_MODEL_PROVIDER,
+    OPENAI_MODELS_REASONING,
+)
 from models.models_list import MODELS, DEFAULT_MODEL
 from utils.logging_config import logger
 
@@ -160,24 +169,24 @@ class Session:
         # Use model from session or client config
         model_id = self.get_model()
 
+        # Prepare messages for the Responses API
+        formatted_messages = []
+        for m in messages:
+            if m["role"] in ("user", "assistant", "developer"):
+                role = "system" if m["role"] == "developer" else m["role"]
+                formatted_messages.append({"role": role, "content": m["content"]})
+
+        kwargs = {"model": model_id, "input": formatted_messages}
+        if model_id in OPENAI_MODELS_REASONING or model_id.startswith("o"):
+            kwargs["reasoning"] = {"effort": "medium"}
+
         try:
-            # Call OpenAI API using the get_client method
             async with openai_client.get_client() as client:
-                response = await client.chat.completions.create(
-                    model=model_id,
-                    messages=[
-                        {"role": m["role"], "content": m["content"]}
-                        for m in messages
-                    ]
-                )
+                response = await client.responses.create(**kwargs)
 
-            # Get assistant's response
-            assistant_message = response.choices[0].message.content
+            assistant_message = response.output[0].content[0].text
 
-            # Add assistant message to history
             messages.append({"role": "assistant", "content": assistant_message})
-
-            # Update messages in session data
             self.data['messages'] = messages
 
             return assistant_message

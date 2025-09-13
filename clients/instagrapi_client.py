@@ -3,6 +3,8 @@ from pathlib import Path
 from instagrapi import Client
 from utils.logging_config import logger
 import requests
+import time
+from urllib.parse import urlparse
 
 IG_USERNAME = os.getenv("IG_USERNAME")
 IG_PASSWORD = os.getenv("IG_PASSWORD")
@@ -25,6 +27,45 @@ class InstagrapiClient:
         except Exception:
             return video_versions[0].get("url")
 
+    def _download_url_with_retries(
+        self,
+        url: str,
+        folder: str = "/tmp",
+        filename: str | None = None,
+        max_attempts: int = 3,
+        timeout_seconds: int = 30,
+        backoff_seconds: float = 0.8,
+    ) -> Path:
+        folder_path = Path(folder)
+        folder_path.mkdir(parents=True, exist_ok=True)
+        if filename:
+            target = folder_path / filename
+        else:
+            parsed = urlparse(url)
+            name = Path(parsed.path).name or f"ig_{int(time.time())}.mp4"
+            if not name.endswith(".mp4"):
+                name = f"{name}.mp4"
+            target = folder_path / name
+
+        last_err: Exception | None = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                with requests.get(url, stream=True, timeout=timeout_seconds) as r:
+                    r.raise_for_status()
+                    with open(target, "wb") as f:
+                        for chunk in r.iter_content(chunk_size=8192):
+                            if chunk:
+                                f.write(chunk)
+                return target
+            except Exception as e:
+                last_err = e
+                if attempt < max_attempts:
+                    sleep_time = backoff_seconds * (2 ** (attempt - 1))
+                    logger.debug(f"Retrying CDN download in {sleep_time:.1f}s due to error: {e}")
+                    time.sleep(sleep_time)
+        # If all attempts failed, raise
+        raise last_err if last_err else Exception("Unknown download error")
+
     def _download_video_via_private_api(self, media_pk: str) -> tuple[bool, str]:
         try:
             data = self.client.private_request(f"media/{media_pk}/info/")
@@ -37,15 +78,32 @@ class InstagrapiClient:
             if media_type == 2:  # Video/Reel
                 video_url = self._pick_best_video_url(item.get("video_versions", []))
                 if video_url:
-                    path = self.client.video_download_by_url(video_url, folder="/tmp")
-                    return True, str(path)
+                    # Try SDK downloader first, then resilient HTTP fallback
+                    try:
+                        path = self.client.video_download_by_url(video_url, folder="/tmp")
+                        return True, str(path)
+                    except Exception as _:
+                        path = self._download_url_with_retries(
+                            video_url,
+                            folder="/tmp",
+                            filename=f"ig_{media_pk}.mp4",
+                        )
+                        return True, str(path)
             elif media_type == 8:  # Carousel
                 for res in item.get("carousel_media", []):
                     if res.get("media_type") == 2:
                         video_url = self._pick_best_video_url(res.get("video_versions", []))
                         if video_url:
-                            path = self.client.video_download_by_url(video_url, folder="/tmp")
-                            return True, str(path)
+                            try:
+                                path = self.client.video_download_by_url(video_url, folder="/tmp")
+                                return True, str(path)
+                            except Exception as _:
+                                path = self._download_url_with_retries(
+                                    video_url,
+                                    folder="/tmp",
+                                    filename=f"ig_{media_pk}.mp4",
+                                )
+                                return True, str(path)
             return False, "No downloadable video found in media."
         except Exception as e:
             return False, f"Private API fallback failed: {e}"
@@ -122,15 +180,27 @@ class InstagrapiClient:
                     if resource.media_type == 2:
                         # Prefer direct download by URL for carousel resources
                         if getattr(resource, "video_url", None):
-                            path = self.client.video_download_by_url(resource.video_url, folder="/tmp")
-                            return True, str(path)
+                            try:
+                                path = self.client.video_download_by_url(resource.video_url, folder="/tmp")
+                                return True, str(path)
+                            except Exception:
+                                path = self._download_url_with_retries(resource.video_url, folder="/tmp")
+                                return True, str(path)
                         # Fallback: if resource PK works with video_download (depends on instagrapi version)
                         video_pk_to_download = getattr(resource, "pk", None)
                         break  # download first video in carousel
 
             if video_pk_to_download:
-                path = self.client.video_download(video_pk_to_download, folder="/tmp")
-                return True, str(path)
+                try:
+                    path = self.client.video_download(video_pk_to_download, folder="/tmp")
+                    return True, str(path)
+                except Exception:
+                    # As a last resort, re-fetch via private API and download by URL
+                    ok, p = self._download_video_via_private_api(str(video_pk_to_download))
+                    if ok:
+                        return True, p
+                    else:
+                        return False, p
             else:
                 return False, "No video found in the post."
 

@@ -35,6 +35,7 @@ class InstagrapiClient:
                 self.client.load_settings(session_path)
                 self.client.login(IG_USERNAME, IG_PASSWORD)
                 logger.info("Instagram login successful using session.")
+                logger.info(f"Logged in with user ID: {self.client.user_id}")
             else:
                 logger.info("Session file not found, performing fresh login.")
                 self.client.challenge_code_handler = self._challenge_code_handler
@@ -42,6 +43,7 @@ class InstagrapiClient:
                 session_path.parent.mkdir(parents=True, exist_ok=True)
                 self.client.dump_settings(SESSION_FILE)
                 logger.info("Fresh Instagram login successful and session saved.")
+                logger.info(f"Logged in with user ID: {self.client.user_id}")
             self._logged_in = True
         except Exception as e:
             logger.warning(f"Instagram login with session failed: {e}. Attempting fresh login.")

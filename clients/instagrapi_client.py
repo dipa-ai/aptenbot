@@ -15,6 +15,41 @@ class InstagrapiClient:
         self._logged_in = False
         self._ensure_login()
 
+    def _pick_best_video_url(self, video_versions: list[dict]) -> str | None:
+        if not video_versions:
+            return None
+        try:
+            # Prefer highest bandwidth
+            best = max(video_versions, key=lambda v: v.get("bandwidth", 0))
+            return best.get("url")
+        except Exception:
+            return video_versions[0].get("url")
+
+    def _download_video_via_private_api(self, media_pk: str) -> tuple[bool, str]:
+        try:
+            data = self.client.private_request(f"media/{media_pk}/info/")
+            items = data.get("items") or []
+            if not items:
+                return False, "No media items found."
+            item = items[0]
+
+            media_type = item.get("media_type")
+            if media_type == 2:  # Video/Reel
+                video_url = self._pick_best_video_url(item.get("video_versions", []))
+                if video_url:
+                    path = self.client.video_download_by_url(video_url, folder="/tmp")
+                    return True, str(path)
+            elif media_type == 8:  # Carousel
+                for res in item.get("carousel_media", []):
+                    if res.get("media_type") == 2:
+                        video_url = self._pick_best_video_url(res.get("video_versions", []))
+                        if video_url:
+                            path = self.client.video_download_by_url(video_url, folder="/tmp")
+                            return True, str(path)
+            return False, "No downloadable video found in media."
+        except Exception as e:
+            return False, f"Private API fallback failed: {e}"
+
     def _challenge_code_handler(self, username: str, choice: str) -> str:
         if CHALLENGE_CODE:
             logger.info("Using IG_CHALLENGE_CODE from environment for challenge.")
@@ -73,7 +108,11 @@ class InstagrapiClient:
 
             # Obtain media PK from URL, then fetch media info
             media_pk = self.client.media_pk_from_url(resolved_url)
-            media_info = self.client.media_info(media_pk)
+            try:
+                media_info = self.client.media_info(media_pk)
+            except Exception as parse_err:
+                logger.warning(f"media_info parse failed, using private API fallback: {parse_err}")
+                return self._download_video_via_private_api(media_pk)
 
             video_pk_to_download = None
             if media_info.media_type == 2:  # Video

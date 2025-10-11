@@ -65,7 +65,7 @@ async def handle_private_photo(message: Message, session_manager, openai_client,
                             else:
                                 reply = await openai_client.process_message_with_image(session, caption, file_urls)
 
-                            await messages[0].answer(reply)
+                            await messages[0].reply(reply)
                             media_groups[media_group_id]['processed'] = True
 
                 asyncio.create_task(process_media_group())
@@ -91,7 +91,7 @@ async def handle_private_photo(message: Message, session_manager, openai_client,
         else:
             reply = await openai_client.process_message_with_image(session, caption, [file_url])
 
-        await message.answer(reply)
+        await message.reply(reply)
 
 @router.message((F.chat.type == "group") | (F.chat.type == "supergroup"), F.photo & F.caption.startswith("/ask"))
 async def handle_group_photo_ask(message: Message, session_manager, openai_client, claude_client, gemini_client, grok_client):

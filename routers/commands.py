@@ -364,8 +364,8 @@ async def handle_ask_command(message: Message, session_manager, openai_client, c
                 response = await grok_client.process_message_with_image(session, question, [file_url])
             else:
                 response = await openai_client.process_message_with_image(session, question, [file_url])
-
-            await message.answer(response)
+            
+            await message.reply(response)
             return
 
         # No photo, just text context
@@ -396,7 +396,7 @@ async def handle_ask_command(message: Message, session_manager, openai_client, c
     else:
         response = await session.process_openai_message(question, openai_client)
 
-    await message.answer(response)
+    await message.reply(response)
 
 # Handler for numeric responses in the form of a reply to a bot message in group chats
 @router.message(F.reply_to_message & F.text.regexp(r"^[1-9]\d*$"))

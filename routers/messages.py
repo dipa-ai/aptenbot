@@ -30,7 +30,7 @@ async def handle_private_message(message: Message, session_manager, openai_clien
         logger.info("Using OpenAI client for processing")
         reply = await openai_client.process_message(session, user_message)
 
-    await message.answer(reply)
+    await message.reply(reply)
 
 @router.message((F.chat.type == "group") | (F.chat.type == "supergroup"), F.text)
 async def handle_group_message(message: Message, session_manager, openai_client, claude_client, gemini_client, grok_client):

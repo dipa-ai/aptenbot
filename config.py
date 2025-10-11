@@ -7,7 +7,14 @@ GROK_API_KEY = os.getenv("GROK_API_KEY")
 GROK_BASE_URL = os.getenv("GROK_BASE_URL", "https://api.groq.com/openai/v1")
 TELEGRAM_BOT_TOKEN = os.getenv("TG_BOT_TOKEN")
 BOT_USERNAME = os.getenv("BOT_USERNAME", "TschatWitscha_bot")
-CHANNEL_ID = os.getenv("CHANNEL_ID", "@korobo4ka_xoroni")
+
+# Parse CHANNEL_ID as a list (comma-separated)
+# Examples: "@channel1,@channel2" or "-1001234567890,@mychannel"
+_channel_id_raw = os.getenv("CHANNEL_ID", "@korobo4ka_xoroni")
+CHANNEL_IDS = [ch.strip() for ch in _channel_id_raw.split(",") if ch.strip()]
+# Keep CHANNEL_ID for backward compatibility (first channel in the list)
+CHANNEL_ID = CHANNEL_IDS[0] if CHANNEL_IDS else "@korobo4ka_xoroni"
+
 CHANNEL_USER_ID = os.getenv("CHANNEL_USER_ID", "777000")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-5-haiku-20241022")

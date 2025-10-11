@@ -20,7 +20,7 @@ instagrapi==2.2.1
 jiter==0.5.0
 magic-filter==1.0.12
 multidict==6.1.0
-openai==1.45.0
+openai==1.107.2
 propcache==0.2.0
 pydantic==2.11.7
 pydantic_core==2.33.2

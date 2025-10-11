@@ -54,8 +54,7 @@ class OpenAIClient:
             message_content.append({"type": "input_image", "image_url": url})
 
         model_to_use = session.get_model()
-        if model_to_use.startswith("o1"):
-            model_to_use = "gpt-4o"
+        # Responses API supports reasoning models; keep model as-is
 
         try:
             logger.info(
@@ -72,14 +71,25 @@ class OpenAIClient:
                     role = "system" if m["role"] == "developer" else m["role"]
                     history_messages.append({"role": role, "content": m["content"]})
 
-            history_messages.append({"role": "user", "content": message_content})
+            # Append the user's multimodal message in Responses API format
+            history_messages.append({
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": user_message},
+                    *[
+                        {"type": "input_image", "image_url": item["image_url"]}
+                        for item in message_content
+                        if isinstance(item, dict) and item.get("type") == "input_image"
+                    ]
+                ]
+            })
 
             async with self.get_client() as client:
                 response = await client.responses.create(
                     model=model_to_use,
                     input=history_messages,
                 )
-            reply = response.output[0].content[0].text.strip()
+            reply = response.output_text.strip()
 
             messages.append({"role": "user", "content": user_message + " [with images]"})
             messages.append({"role": "assistant", "content": reply})

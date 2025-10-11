@@ -1,5 +1,5 @@
 from utils.logging_config import logger
-from config import CHANNEL_ID, CHANNEL_USER_ID
+from config import CHANNEL_IDS, CHANNEL_USER_ID
 
 class SubscriptionManager:
     @staticmethod
@@ -11,9 +11,20 @@ class SubscriptionManager:
                 logger.info("Message sent on behalf of a channel, considering as subscribed")
                 return True
 
-            member = await bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
-            logger.info(f"Member status: {member.status}")
-            return member.status in ['member', 'administrator', 'creator']
+            # Check if user is a member of ANY of the configured channels
+            for channel_id in CHANNEL_IDS:
+                try:
+                    member = await bot.get_chat_member(chat_id=channel_id, user_id=user_id)
+                    logger.info(f"Member status in {channel_id}: {member.status}")
+                    if member.status in ['member', 'administrator', 'creator']:
+                        logger.info(f"User {user_id} is subscribed to {channel_id}")
+                        return True
+                except Exception as e:
+                    logger.warning(f"Error checking subscription for channel {channel_id}: {e}")
+                    continue
+            
+            logger.info(f"User {user_id} is not subscribed to any of the required channels")
+            return False
         except Exception as e:
             logger.error(f"Error checking subscription status: {e}")
             return False

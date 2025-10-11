@@ -100,6 +100,22 @@ async def handle_group_photo_ask(message: Message, session_manager, openai_clien
     # If it's a single photo with /ask command
     if not message.media_group_id:
         caption = message.caption.replace('/ask', '').strip()
+
+        # Check if this is a reply to another message
+        if message.reply_to_message:
+            replied_text = message.reply_to_message.text or message.reply_to_message.caption or ""
+
+            if replied_text:
+                # Add context from the replied message
+                if caption:
+                    caption = f"Context from previous message: \"{replied_text}\"\n\nUser's question: \"{caption}\""
+                else:
+                    # If no caption provided, just analyze the replied message with the photo
+                    caption = f"Context from previous message: \"{replied_text}\"\n\nUser is asking about this in relation to the photo."
+
+        if not caption:
+            caption = "What is in this image?"
+
         file = await message.bot.get_file(message.photo[-1].file_id)
         file_url = file.file_path
 
@@ -142,13 +158,27 @@ async def handle_group_photo_ask(message: Message, session_manager, openai_clien
 
                         # Find message with /ask command
                         caption = None
+                        reply_to_message = None
                         for msg in messages:
                             if msg.caption and msg.caption.startswith('/ask'):
                                 caption = msg.caption.replace('/ask', '').strip()
+                                reply_to_message = msg.reply_to_message
                                 break
 
                         logger.debug(f"Processing media group {media_group_id}. Messages count: {len(messages)}")
                         logger.debug(f"Final caption: {caption}")
+
+                        # Check if this is a reply to another message
+                        if reply_to_message:
+                            replied_text = reply_to_message.text or reply_to_message.caption or ""
+
+                            if replied_text:
+                                # Add context from the replied message
+                                if caption:
+                                    caption = f"Context from previous message: \"{replied_text}\"\n\nUser's question: \"{caption}\""
+                                else:
+                                    # If no caption provided, just analyze the replied message with the photos
+                                    caption = f"Context from previous message: \"{replied_text}\"\n\nUser is asking about this in relation to the photos."
 
                         if not caption:
                             await messages[0].reply("Please add /ask command with your question")

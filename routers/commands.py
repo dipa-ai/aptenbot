@@ -335,7 +335,51 @@ async def handle_ask_command(message: Message, session_manager, openai_client, c
     # Extract the actual question (remove the /ask part)
     question_source = message.text or message.caption or ""
     question = question_source.replace("/ask", "", 1).strip()
-    if not question:
+
+    # Check if this is a reply to another message
+    if message.reply_to_message:
+        replied_text = message.reply_to_message.text or message.reply_to_message.caption or ""
+
+        # Check if the replied message has a photo
+        if message.reply_to_message.photo:
+            # Handle photo from replied message
+            if not question:
+                question = "What is in this image?"
+            elif replied_text:
+                question = f"Context from caption: \"{replied_text}\"\n\nUser's question: \"{question}\""
+
+            # Get photo URL
+            file = await message.bot.get_file(message.reply_to_message.photo[-1].file_id)
+            file_url = file.file_path
+
+            session = session_manager.get_or_create_session(user_id)
+            model_provider = session_manager.get_model_provider(user_id)
+
+            # Process with image
+            if model_provider == "anthropic":
+                response = await claude_client.process_message_with_image(session, question, [file_url])
+            elif model_provider == "gemini":
+                response = await gemini_client.process_message_with_image(session, question, [file_url])
+            elif model_provider == "grok":
+                response = await grok_client.process_message_with_image(session, question, [file_url])
+            else:
+                response = await openai_client.process_message_with_image(session, question, [file_url])
+
+            await message.answer(response)
+            return
+
+        # No photo, just text context
+        if replied_text:
+            # Add context from the replied message
+            if question:
+                question = f"Context from previous message: \"{replied_text}\"\n\nUser's question: \"{question}\""
+            else:
+                # If no question provided, just analyze the replied message
+                question = f"Context from previous message: \"{replied_text}\"\n\nUser asked to analyze this."
+        elif not question:
+            await message.answer("Please provide a question after /ask")
+            return
+    elif not question:
         await message.answer("Please provide a question after /ask")
         return
 

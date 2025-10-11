@@ -1,26 +1,32 @@
 import os
+import json
+import re
 from pathlib import Path
 from instagrapi import Client
 from instagrapi.exceptions import LoginRequired
 from utils.logging_config import logger
+from utils.redis_client import RedisClient
 import requests
 import time
 from urllib.parse import urlparse
 
 IG_USERNAME = os.getenv("IG_USERNAME")
 IG_PASSWORD = os.getenv("IG_PASSWORD")
-SESSION_FILE = os.getenv("INSTAGRAPI_SESSION_FILE", "/tmp/instagrapi_session.json")
 CHALLENGE_CODE = os.getenv("IG_CHALLENGE_CODE")
-
-# Optional: use cookies from env if provided (deployed in k8s secrets)
-IG_SESSIONID = os.getenv("IG_SESSIONID")
-IG_CSRFTOKEN = os.getenv("IG_CSRFTOKEN")
-IG_DS_USER_ID = os.getenv("IG_DS_USER_ID")
+IG_PROXY_URL = os.getenv("IG_PROXY_URL")  # Format: http://user:pass@host:port or socks5://host:port
+REDIS_IG_SESSION_KEY = "instagrapi:session"
 
 class InstagrapiClient:
     def __init__(self) -> None:
         self.client = Client()
         self._logged_in = False
+        self.redis_client = RedisClient()
+
+        # Set proxy if provided
+        if IG_PROXY_URL:
+            logger.info(f"Using Instagram proxy: {IG_PROXY_URL.split('@')[-1] if '@' in IG_PROXY_URL else IG_PROXY_URL}")
+            self.client.set_proxy(IG_PROXY_URL)
+
         self._ensure_login()
 
     def _pick_best_video_url(self, video_versions: list[dict]) -> str | None:
@@ -134,17 +140,34 @@ class InstagrapiClient:
             "Instagram requires a verification code (checkpoint). Set IG_CHALLENGE_CODE env var and retry."
         )
 
-    def _set_cookies_from_env(self) -> None:
-        """Set cookies from environment variables if available."""
-        if IG_SESSIONID and IG_CSRFTOKEN and IG_DS_USER_ID:
-            logger.info("Setting Instagram cookies from environment variables.")
-            self.client.set_settings({
-                "cookies": {
-                    "sessionid": IG_SESSIONID,
-                    "csrftoken": IG_CSRFTOKEN,
-                    "ds_user_id": IG_DS_USER_ID,
-                }
-            })
+    async def _load_session_from_redis(self) -> bool:
+        """Load Instagram session from Redis."""
+        try:
+            redis = self.redis_client.get_master()
+            session_json = await redis.get(REDIS_IG_SESSION_KEY)
+            await redis.close()
+            
+            if session_json:
+                settings = json.loads(session_json)
+                self.client.set_settings(settings)
+                logger.info("Loaded Instagram session from Redis.")
+                return True
+            return False
+        except Exception as e:
+            logger.debug(f"Failed to load session from Redis: {e}")
+            return False
+
+    async def _save_session_to_redis(self) -> None:
+        """Save Instagram session to Redis."""
+        try:
+            settings = self.client.get_settings()
+            redis = self.redis_client.get_master()
+            # Session lives for 7 days (Instagram sessions typically valid for ~90 days)
+            await redis.setex(REDIS_IG_SESSION_KEY, 7 * 24 * 3600, json.dumps(settings))
+            await redis.close()
+            logger.info("Saved Instagram session to Redis.")
+        except Exception as e:
+            logger.warning(f"Failed to save session to Redis: {e}")
 
     def _ensure_login(self, force_relogin: bool = False) -> None:
         if self._logged_in and not force_relogin:
@@ -152,55 +175,106 @@ class InstagrapiClient:
         if not IG_USERNAME or not IG_PASSWORD:
             logger.warning("IG_USERNAME/IG_PASSWORD not provided; proceeding unauthenticated")
             return
-
+        
         # Reset flag on forced relogin
         if force_relogin:
             self._logged_in = False
             logger.info("Forcing re-login due to expired session.")
-
+        
         try:
-            session_path = Path(SESSION_FILE)
-            # Try cookies from env first
-            if IG_SESSIONID and not force_relogin:
-                self._set_cookies_from_env()
-                try:
-                    # Verify cookies work
-                    self.client.get_timeline_feed()
-                    self._logged_in = True
-                    logger.info("Instagram session restored from environment cookies.")
-                    return
-                except Exception as cookie_err:
-                    logger.warning(f"Environment cookies invalid: {cookie_err}, falling back to login.")
-
-            # Try session file
-            if session_path.exists() and not force_relogin:
-                logger.info(f"Loading Instagrapi session from {SESSION_FILE}")
-                self.client.load_settings(session_path)
-                self.client.login(IG_USERNAME, IG_PASSWORD)
-                logger.info("Instagram login successful using session.")
-            else:
-                logger.info("Session file not found, performing fresh login.")
-                self.client.challenge_code_handler = self._challenge_code_handler
-                self.client.login(IG_USERNAME, IG_PASSWORD)
-                session_path.parent.mkdir(parents=True, exist_ok=True)
-                self.client.dump_settings(SESSION_FILE)
-                logger.info("Fresh Instagram login successful and session saved.")
+            # Try loading session from Redis first
+            if not force_relogin:
+                import asyncio
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                session_loaded = loop.run_until_complete(self._load_session_from_redis())
+                
+                if session_loaded:
+                    try:
+                        # Verify session works
+                        self.client.account_info()
+                        self._logged_in = True
+                        logger.info("Instagram session restored from Redis and verified.")
+                        return
+                    except Exception as verify_err:
+                        logger.warning(f"Redis session invalid: {verify_err}, performing fresh login.")
+            
+            # Fresh login
+            logger.info("Performing fresh Instagram login.")
+            self.client = Client()
+            self.client.challenge_code_handler = self._challenge_code_handler
+            self.client.login(IG_USERNAME, IG_PASSWORD)
             self._logged_in = True
+            logger.info("Fresh Instagram login successful.")
+            
+            # Save to Redis
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self._save_session_to_redis())
+            
         except Exception as e:
-            logger.warning(f"Instagram login with session failed: {e}. Attempting fresh login.")
-            try:
-                self.client = Client()
-                self.client.challenge_code_handler = self._challenge_code_handler
-                self.client.login(IG_USERNAME, IG_PASSWORD)
-                session_path = Path(SESSION_FILE)
-                session_path.parent.mkdir(parents=True, exist_ok=True)
-                self.client.dump_settings(SESSION_FILE)
-                self._logged_in = True
-                logger.info("Fresh Instagram login successful after session failure.")
-            except Exception as e2:
-                logger.error(f"Instagram fresh login failed: {e2}")
+            logger.error(f"Instagram login failed: {e}")
+
+    def _try_public_download(self, url: str) -> tuple[bool, str]:
+        """
+        Try downloading video without authentication by parsing public HTML.
+        Works for public posts only.
+        """
+        try:
+            logger.info(f"Attempting public (no-auth) download for: {url}")
+            
+            # Resolve redirects first
+            response = requests.get(url, allow_redirects=True, timeout=15)
+            resolved_url = response.url
+            html = response.text
+            
+            # Extract video URL from HTML using regex
+            # Instagram embeds video URLs in <script> tags as JSON
+            patterns = [
+                r'"video_url":"([^"]+)"',
+                r'"playback_url":"([^"]+)"',
+                r'<meta property="og:video" content="([^"]+)"',
+                r'"video_versions":\[{"url":"([^"]+)"',
+            ]
+            
+            video_url = None
+            for pattern in patterns:
+                match = re.search(pattern, html)
+                if match:
+                    video_url = match.group(1)
+                    # Unescape unicode
+                    video_url = video_url.encode().decode('unicode_escape')
+                    break
+            
+            if not video_url:
+                logger.debug("Could not extract video URL from public HTML.")
+                return False, "Public download failed: no video URL found"
+            
+            logger.info(f"Found public video URL, downloading...")
+            
+            # Download directly
+            path = self._download_url_with_retries(
+                video_url,
+                folder="/tmp",
+                filename=f"ig_public_{int(time.time())}.mp4",
+            )
+            return True, str(path)
+            
+        except Exception as e:
+            logger.debug(f"Public download failed: {e}")
+            return False, f"Public download failed: {e}"
 
     def download_video(self, url: str, retry_on_auth_fail: bool = True) -> tuple[bool, str]:
+        # Try public download first (no auth required) - works for most public posts
+        if not IG_PROXY_URL:
+            logger.info("No proxy configured, trying public download first...")
+            success, result = self._try_public_download(url)
+            if success:
+                logger.info("Public download successful!")
+                return True, result
+            logger.info(f"Public download failed, falling back to authenticated method: {result}")
+        
         try:
             self._ensure_login()
             # Resolve Instagram share/redirect URLs to canonical media URL

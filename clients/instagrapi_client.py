@@ -185,9 +185,15 @@ class InstagrapiClient:
             # Try loading session from Redis first
             if not force_relogin:
                 import asyncio
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                session_loaded = loop.run_until_complete(self._load_session_from_redis())
+                try:
+                    loop = asyncio.get_running_loop()
+                    # We're in an async context, create task
+                    session_loaded = asyncio.run_coroutine_threadsafe(
+                        self._load_session_from_redis(), loop
+                    ).result(timeout=5)
+                except RuntimeError:
+                    # No running loop, create new one
+                    session_loaded = asyncio.run(self._load_session_from_redis())
                 
                 if session_loaded:
                     try:
@@ -203,15 +209,24 @@ class InstagrapiClient:
             logger.info("Performing fresh Instagram login.")
             self.client = Client()
             self.client.challenge_code_handler = self._challenge_code_handler
+            
+            # Set proxy if configured
+            if IG_PROXY_URL:
+                self.client.set_proxy(IG_PROXY_URL)
+            
             self.client.login(IG_USERNAME, IG_PASSWORD)
             self._logged_in = True
             logger.info("Fresh Instagram login successful.")
             
             # Save to Redis
             import asyncio
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(self._save_session_to_redis())
+            try:
+                loop = asyncio.get_running_loop()
+                asyncio.run_coroutine_threadsafe(
+                    self._save_session_to_redis(), loop
+                ).result(timeout=5)
+            except RuntimeError:
+                asyncio.run(self._save_session_to_redis())
             
         except Exception as e:
             logger.error(f"Instagram login failed: {e}")

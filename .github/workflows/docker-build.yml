@@ -33,3 +33,34 @@ jobs:
           file: Dockerfile
           push: true
           tags: registry.luxembourg-2.cloud.gcore.dev/59508-197526-76-infra/aptenbot:${{ github.ref_name }}
+
+  helm-chart:
+    runs-on: ubuntu-latest
+    needs: build
+    env:
+      CHART_VERSION: ${{ github.ref_name }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'latest'
+
+      - name: Login to Harbor OCI registry
+        run: |
+          echo "${{ secrets.DOCKER_PASSWORD }}" | helm registry login ${{ secrets.DOCKER_REGISTRY }} \
+            --username ${{ secrets.DOCKER_USERNAME }} \
+            --password-stdin
+
+      - name: Package Helm chart
+        run: |
+          helm dependency update install/kubernetes/aptenbot
+          helm package install/kubernetes/aptenbot \
+            --version "${CHART_VERSION#v}" \
+            --app-version "${CHART_VERSION}"
+
+      - name: Push Helm chart to OCI registry
+        run: helm push aptenbot-${CHART_VERSION#v}.tgz oci://${{ secrets.DOCKER_REGISTRY }}/59508-197526-76-infra/charts

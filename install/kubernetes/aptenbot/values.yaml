@@ -1,0 +1,180 @@
+# Default values for aptenbot.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Replica count
+# https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
+replicaCount: 1
+
+# Container image configuration
+# https://kubernetes.io/docs/concepts/containers/images/
+image:
+  repository: nginx
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+# Secrets for pulling an image from a private repository
+# https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+imagePullSecrets: []
+# - name: my-registry-secret
+
+# Override chart name
+nameOverride: ""
+fullnameOverride: ""
+
+# Service account configuration
+# https://kubernetes.io/docs/concepts/security/service-accounts/
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+# Pod annotations and labels
+# https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
+podAnnotations: {}
+podLabels: {}
+
+# Security contexts
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+# ========================================
+# Environment Variables
+# ========================================
+
+# Plain environment variables as key-value pairs
+env: {}
+  # LOG_LEVEL: "info"
+  # MY_VAR: "value"
+
+# Secrets to inject as envFrom (bulk)
+# All keys from these secrets become env vars
+envFromSecrets: []
+  # - my-app-secrets
+  # - another-secret
+
+# ConfigMaps to inject as envFrom (bulk)
+envFromConfigMaps: []
+  # - my-app-config
+
+# ========================================
+# ConfigMap (optional)
+# ========================================
+
+# ConfigMap data - if provided, creates a ConfigMap
+configMap:
+  data: {}
+    # my_key: |
+    #   multi-line
+    #   value here
+
+# ========================================
+# Service (optional, for HTTP workloads)
+# ========================================
+service:
+  type: ClusterIP
+  port: 80
+
+# Container ports (if exposing HTTP)
+ports: []
+  # - name: http
+  #   containerPort: 8080
+  #   protocol: TCP
+
+# Probes (optional)
+livenessProbe: {}
+  # httpGet:
+  #   path: /health
+  #   port: http
+  # initialDelaySeconds: 10
+
+readinessProbe: {}
+  # httpGet:
+  #   path: /ready
+  #   port: http
+  # initialDelaySeconds: 5
+
+# ========================================
+# Resources
+# ========================================
+resources: {}
+  # limits:
+  #   cpu: 500m
+  #   memory: 512Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+
+# ========================================
+# Autoscaling (HPA)
+# ========================================
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+# ========================================
+# Additional volumes and mounts
+# ========================================
+volumes: []
+  # - name: foo
+  #   secret:
+  #     secretName: mysecret
+
+volumeMounts: []
+  # - name: foo
+  #   mountPath: "/etc/foo"
+  #   readOnly: true
+
+# ========================================
+# Node scheduling
+# ========================================
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# ========================================
+# Ingress (optional)
+# ========================================
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+# ========================================
+# HTTPRoute (Gateway API)
+# ========================================
+httpRoute:
+  enabled: false
+  annotations: {}
+  parentRefs:
+    - name: gateway
+      sectionName: http
+  hostnames:
+    - chart-example.local
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /

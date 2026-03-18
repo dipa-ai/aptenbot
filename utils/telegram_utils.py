@@ -63,6 +63,8 @@ async def send_long_message(message, text: str) -> None:
 
     Splits the text into chunks and sends each as a separate reply.
     """
+    if not text:
+        return
     chunks = split_message(text)
     for chunk in chunks:
         await message.reply(chunk)

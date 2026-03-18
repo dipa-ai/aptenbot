@@ -5,6 +5,69 @@ from utils.logging_config import logger
 from config import MAX_RETRIES, RETRY_DELAY
 from pathlib import Path
 
+TELEGRAM_MESSAGE_LIMIT = 4096
+
+
+def split_message(text: str, max_length: int = TELEGRAM_MESSAGE_LIMIT) -> list[str]:
+    """Split a long message into chunks that fit within Telegram's message size limit.
+
+    Tries to split at paragraph boundaries (double newlines), then single newlines,
+    then spaces. Falls back to hard splitting if no natural boundary is found.
+    """
+    if not text:
+        return [text]
+
+    if len(text) <= max_length:
+        return [text]
+
+    chunks = []
+    remaining = text
+
+    while remaining:
+        if len(remaining) <= max_length:
+            chunks.append(remaining)
+            break
+
+        # Try to find a natural split point within the limit
+        split_pos = None
+
+        # 1. Try splitting at a double newline (paragraph boundary)
+        pos = remaining.rfind("\n\n", 0, max_length)
+        if pos > 0:
+            split_pos = pos + 2  # Include the double newline in the first chunk
+
+        # 2. Try splitting at a single newline
+        if split_pos is None:
+            pos = remaining.rfind("\n", 0, max_length)
+            if pos > 0:
+                split_pos = pos + 1  # Include the newline in the first chunk
+
+        # 3. Try splitting at a space
+        if split_pos is None:
+            pos = remaining.rfind(" ", 0, max_length)
+            if pos > 0:
+                split_pos = pos + 1  # Include the space in the first chunk
+
+        # 4. Hard split as last resort
+        if split_pos is None:
+            split_pos = max_length
+
+        chunks.append(remaining[:split_pos])
+        remaining = remaining[split_pos:]
+
+    return chunks
+
+
+async def send_long_message(message, text: str) -> None:
+    """Send a reply that may exceed Telegram's message size limit.
+
+    Splits the text into chunks and sends each as a separate reply.
+    """
+    chunks = split_message(text)
+    for chunk in chunks:
+        await message.reply(chunk)
+
+
 def escape_markdown_v2(text: str) -> str:
     # First handle triple backticks (code blocks)
     parts = text.split("```")

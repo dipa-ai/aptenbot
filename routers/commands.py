@@ -5,6 +5,7 @@ from aiogram.dispatcher.event.bases import SkipHandler
 from config import OPENAI_MODEL, ANTHROPIC_MODEL, OPENAI_ALLOWED_MODELS, ANTHROPIC_ALLOWED_MODELS, GEMINI_MODEL, GEMINI_ALLOWED_MODELS, GROK_MODEL, GROK_ALLOWED_MODELS
 import re
 from utils.logging_config import logger
+from utils.telegram_utils import send_long_message
 
 router = Router()
 
@@ -365,7 +366,7 @@ async def handle_ask_command(message: Message, session_manager, openai_client, c
             else:
                 response = await openai_client.process_message_with_image(session, question, [file_url])
             
-            await message.reply(response)
+            await send_long_message(message, response)
             return
 
         # No photo, just text context
@@ -396,7 +397,7 @@ async def handle_ask_command(message: Message, session_manager, openai_client, c
     else:
         response = await session.process_openai_message(question, openai_client)
 
-    await message.reply(response)
+    await send_long_message(message, response)
 
 # Handler for numeric responses in the form of a reply to a bot message in group chats
 @router.message(F.reply_to_message & F.text.regexp(r"^[1-9]\d*$"))

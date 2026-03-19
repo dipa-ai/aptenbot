@@ -1,6 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import Message
 from utils.logging_config import logger
+from utils.telegram_utils import send_long_message
 
 router = Router()
 
@@ -30,7 +31,7 @@ async def handle_private_message(message: Message, session_manager, openai_clien
         logger.info("Using OpenAI client for processing")
         reply = await openai_client.process_message(session, user_message)
 
-    await message.reply(reply)
+    await send_long_message(message, reply)
 
 @router.message((F.chat.type == "group") | (F.chat.type == "supergroup"), F.text)
 async def handle_group_message(message: Message, session_manager, openai_client, claude_client, gemini_client, grok_client):
@@ -132,7 +133,7 @@ async def handle_group_message(message: Message, session_manager, openai_client,
             logger.info(f"Using OpenAI client for user {user_id}")
             reply = await openai_client.process_message(session, user_message)
 
-        await message.reply(reply) # Use reply to keep context in group chat
+        await send_long_message(message, reply) # Use reply to keep context in group chat
         logger.info(f"Successfully processed and replied in group to user {user_id}.")
     except Exception as e:
         logger.error(f"Error processing group message for user {user_id} via AI client: {e}", exc_info=True)

@@ -2,6 +2,7 @@ from aiogram import Router, F
 from aiogram.types import Message
 import asyncio
 from utils.logging_config import logger
+from utils.telegram_utils import send_long_message
 
 router = Router()
 media_groups = {}
@@ -65,7 +66,7 @@ async def handle_private_photo(message: Message, session_manager, openai_client,
                             else:
                                 reply = await openai_client.process_message_with_image(session, caption, file_urls)
 
-                            await messages[0].reply(reply)
+                            await send_long_message(messages[0], reply)
                             media_groups[media_group_id]['processed'] = True
 
                 asyncio.create_task(process_media_group())
@@ -91,7 +92,7 @@ async def handle_private_photo(message: Message, session_manager, openai_client,
         else:
             reply = await openai_client.process_message_with_image(session, caption, [file_url])
 
-        await message.reply(reply)
+        await send_long_message(message, reply)
 
 @router.message((F.chat.type == "group") | (F.chat.type == "supergroup"), F.photo & F.caption.startswith("/ask"))
 async def handle_group_photo_ask(message: Message, session_manager, openai_client, claude_client, gemini_client, grok_client):
@@ -131,7 +132,7 @@ async def handle_group_photo_ask(message: Message, session_manager, openai_clien
         else:
             reply = await openai_client.process_message_with_image(session, caption, [file_url])
 
-        await message.reply(reply)
+        await send_long_message(message, reply)
         return
 
     # If part of a media group, process with group handler
@@ -203,7 +204,7 @@ async def handle_group_photo_ask(message: Message, session_manager, openai_clien
                         else:
                             reply = await openai_client.process_message_with_image(session, caption, file_urls)
 
-                        await messages[0].reply(reply)
+                        await send_long_message(messages[0], reply)
 
                         # Mark as processed
                         media_groups[media_group_id]['processed'] = True

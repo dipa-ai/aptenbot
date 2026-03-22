@@ -63,4 +63,4 @@ jobs:
             --app-version "${CHART_VERSION}"
 
       - name: Push Helm chart to OCI registry
-        run: helm push aptenbot-${CHART_VERSION#v}.tgz oci://${{ vars.DOCKER_REGISTRY }}/59508-197526-76-infra/aptenbot/charts
+        run: helm push aptenbot-${CHART_VERSION#v}.tgz oci://${{ vars.DOCKER_REGISTRY }}/59508-197526-76-infra/charts

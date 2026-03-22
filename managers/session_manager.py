@@ -10,6 +10,7 @@ from config import (
     SYSTEM_PROMPT,
     DEFAULT_MODEL_PROVIDER,
     OPENAI_MODELS_REASONING,
+    OPENAI_REASONING_EFFORT,
 )
 from models.models_list import MODELS, DEFAULT_MODEL
 from utils.logging_config import logger
@@ -184,6 +185,8 @@ class Session:
             kwargs = {"model": model_id, "input": input_items}
             if instructions:
                 kwargs["instructions"] = instructions
+            if OPENAI_REASONING_EFFORT:
+                kwargs["reasoning"] = {"effort": OPENAI_REASONING_EFFORT}
 
             async with openai_client.get_client() as client:
                 response = await client.responses.create(**kwargs)

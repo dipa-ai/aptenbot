@@ -4,7 +4,7 @@ from typing import List, Dict, Any
 from openai import AsyncOpenAI, OpenAIError, RateLimitError
 
 from utils.logging_config import logger
-from config import OPENAI_API_KEY, TELEGRAM_BOT_TOKEN
+from config import OPENAI_API_KEY, TELEGRAM_BOT_TOKEN, OPENAI_REASONING_EFFORT
 
 
 class OpenAIClient:
@@ -89,6 +89,8 @@ class OpenAIClient:
             instructions = "\n".join(instructions_parts) if instructions_parts else None
             if instructions:
                 kwargs["instructions"] = instructions
+            if OPENAI_REASONING_EFFORT:
+                kwargs["reasoning"] = {"effort": OPENAI_REASONING_EFFORT}
 
             async with self.get_client() as client:
                 response = await client.responses.create(**kwargs)

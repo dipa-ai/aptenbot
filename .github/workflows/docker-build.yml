@@ -22,7 +22,7 @@ jobs:
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ${{ secrets.DOCKER_REGISTRY }}
+          registry: ${{ vars.DOCKER_REGISTRY }}
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
@@ -51,7 +51,7 @@ jobs:
 
       - name: Login to Harbor OCI registry
         run: |
-          echo "${{ secrets.DOCKER_PASSWORD }}" | helm registry login ${{ secrets.DOCKER_REGISTRY }} \
+          echo "${{ secrets.DOCKER_PASSWORD }}" | helm registry login ${{ vars.DOCKER_REGISTRY }} \
             --username ${{ secrets.DOCKER_USERNAME }} \
             --password-stdin
 
@@ -63,4 +63,4 @@ jobs:
             --app-version "${CHART_VERSION}"
 
       - name: Push Helm chart to OCI registry
-        run: helm push aptenbot-${CHART_VERSION#v}.tgz oci://${{ secrets.DOCKER_REGISTRY }}/59508-197526-76-infra/charts
+        run: helm push aptenbot-${CHART_VERSION#v}.tgz oci://${{ vars.DOCKER_REGISTRY }}/59508-197526-76-infra/aptenbot/charts

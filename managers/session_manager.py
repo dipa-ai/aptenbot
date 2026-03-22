@@ -169,19 +169,24 @@ class Session:
         # Use model from session or client config
         model_id = self.get_model()
 
-        # Prepare messages for Responses API (role-content pairs)
+        # Extract system/developer messages as instructions (Responses API)
+        instructions_parts = []
         input_items = []
         for m in messages:
-            if m["role"] in ("user", "assistant", "developer"):
-                role = "system" if m["role"] == "developer" else m["role"]
-                input_items.append({"role": role, "content": m["content"]})
+            if m["role"] == "developer":
+                instructions_parts.append(m["content"])
+            elif m["role"] in ("user", "assistant"):
+                input_items.append({"role": m["role"], "content": m["content"]})
+
+        instructions = "\n".join(instructions_parts) if instructions_parts else None
 
         try:
+            kwargs = {"model": model_id, "input": input_items}
+            if instructions:
+                kwargs["instructions"] = instructions
+
             async with openai_client.get_client() as client:
-                response = await client.responses.create(
-                    model=model_id,
-                    input=input_items
-                )
+                response = await client.responses.create(**kwargs)
 
             assistant_message = response.output_text
 

@@ -71,12 +71,11 @@ envFromConfigMaps: []
 # ConfigMap (optional)
 # ========================================
 
-# ConfigMap data - if provided, creates a ConfigMap
+# ConfigMap data - if provided, creates a ConfigMap and auto-injects as env vars.
+# Keys must match env var names exactly (e.g. SYSTEM_PROMPT, not system_prompt).
 configMap:
   data: {}
-    # my_key: |
-    #   multi-line
-    #   value here
+    # SYSTEM_PROMPT: "You are a helpful assistant that speaks Russian."
 
 # ========================================
 # Service (optional, for HTTP workloads)

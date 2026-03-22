@@ -40,8 +40,13 @@ spec:
           {{- end }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          {{- if or .Values.envFromSecrets .Values.envFromConfigMaps }}
+          {{- $hasEnvFrom := or .Values.envFromSecrets .Values.envFromConfigMaps (and .Values.configMap .Values.configMap.data) }}
+          {{- if $hasEnvFrom }}
           envFrom:
+            {{- if and .Values.configMap .Values.configMap.data }}
+            - configMapRef:
+                name: {{ include "aptenbot.fullname" . }}-config
+            {{- end }}
             {{- range .Values.envFromSecrets }}
             - secretRef:
                 name: {{ . }}

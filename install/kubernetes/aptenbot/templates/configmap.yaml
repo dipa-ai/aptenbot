@@ -8,8 +8,7 @@ metadata:
     {{- include "aptenbot.labels" . | nindent 4 }}
 data:
   {{- range $key, $value := .Values.configMap.data }}
-  {{ $key }}: |
-    {{- $value | nindent 4 }}
+  {{ $key }}: {{ $value | quote }}
   {{- end }}
 {{- end }}
 {{- end }}

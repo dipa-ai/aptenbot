@@ -65,13 +65,14 @@ class OpenAIClient:
             )
 
             messages = session.data.get("messages", [])
+            instructions_parts = []
             history_messages = []
             for m in messages:
-                if m["role"] in ("user", "assistant", "developer"):
-                    role = "system" if m["role"] == "developer" else m["role"]
-                    history_messages.append({"role": role, "content": m["content"]})
+                if m["role"] == "developer":
+                    instructions_parts.append(m["content"])
+                elif m["role"] in ("user", "assistant"):
+                    history_messages.append({"role": m["role"], "content": m["content"]})
 
-            # Append the user's multimodal message in Responses API format
             history_messages.append({
                 "role": "user",
                 "content": [
@@ -84,11 +85,13 @@ class OpenAIClient:
                 ]
             })
 
+            kwargs = {"model": model_to_use, "input": history_messages}
+            instructions = "\n".join(instructions_parts) if instructions_parts else None
+            if instructions:
+                kwargs["instructions"] = instructions
+
             async with self.get_client() as client:
-                response = await client.responses.create(
-                    model=model_to_use,
-                    input=history_messages,
-                )
+                response = await client.responses.create(**kwargs)
             reply = response.output_text.strip()
 
             messages.append({"role": "user", "content": user_message + " [with images]"})

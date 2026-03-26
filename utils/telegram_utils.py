@@ -71,11 +71,20 @@ async def send_long_message(message, text: str) -> None:
     chunks = split_message(text)
     for chunk in chunks:
         escaped_chunk = escape_markdown_v2(chunk)
-        try:
-            await message.reply(escaped_chunk, parse_mode="MarkdownV2")
-        except TelegramBadRequest:
-            logger.warning("MarkdownV2 parse failed, falling back to plain text")
-            await message.reply(chunk)
+        # Account for length increase after escaping: ensure each sent chunk
+        # stays within Telegram's message size limit.
+        if len(escaped_chunk) > TELEGRAM_MESSAGE_LIMIT:
+            escaped_subchunks = split_message(escaped_chunk, TELEGRAM_MESSAGE_LIMIT)
+        else:
+            escaped_subchunks = [escaped_chunk]
+
+        for subchunk in escaped_subchunks:
+            try:
+                await message.reply(subchunk, parse_mode="MarkdownV2")
+            except TelegramBadRequest:
+                logger.warning("MarkdownV2 parse failed, falling back to plain text")
+                # Send original unescaped chunk to avoid visible backslashes
+                await message.reply(chunk)
 
 
 def escape_markdown_v2(text: str) -> str:

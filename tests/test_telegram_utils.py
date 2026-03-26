@@ -18,34 +18,30 @@ telegram.error.BadRequest = BadRequest
 sys.modules.setdefault('telegram', telegram)
 sys.modules.setdefault('telegram.error', telegram.error)
 
-# Stub out aiogram.exceptions
-aiogram_mod = types.ModuleType('aiogram')
-aiogram_exceptions = types.ModuleType('aiogram.exceptions')
-class TelegramBadRequest(Exception):
-    def __init__(self, method='', message=''):
-        super().__init__(message)
-aiogram_exceptions.TelegramBadRequest = TelegramBadRequest
-aiogram_mod.exceptions = aiogram_exceptions
-sys.modules.setdefault('aiogram', aiogram_mod)
-sys.modules.setdefault('aiogram.exceptions', aiogram_exceptions)
+# Use the real aiogram package (installed via requirements.txt)
+from aiogram.exceptions import TelegramBadRequest as _AiogramTelegramBadRequest
 
-logging_config = types.ModuleType('utils.logging_config')
-class DummyLogger:
-    def error(self, *args, **kwargs):
-        pass
-    def warning(self, *args, **kwargs):
-        pass
-logging_config.logger = DummyLogger()
-sys.modules.setdefault('utils.logging_config', logging_config)
+try:
+    # Prefer the real logging configuration module if it exists.
+    import utils.logging_config as logging_config
+except (ModuleNotFoundError, ImportError):
+    # Fallback stub for environments where utils.logging_config is unavailable.
+    logging_config = types.ModuleType('utils.logging_config')
+
+    class DummyLogger:
+        def __getattr__(self, name):
+            # Return a no-op callable for any logging method (e.g., info, debug, error).
+            def _noop(*args, **kwargs):
+                pass
+            return _noop
+
+    logging_config.logger = DummyLogger()
+    sys.modules.setdefault('utils.logging_config', logging_config)
 
 telegram_utils = importlib.import_module('utils.telegram_utils')
 escape_markdown_v2 = telegram_utils.escape_markdown_v2
 split_message = telegram_utils.split_message
 send_long_message = telegram_utils.send_long_message
-
-# Get the actual TelegramBadRequest class used by the module, so tests raise the
-# same exception type that send_long_message catches.
-_AiogramTelegramBadRequest = sys.modules['aiogram.exceptions'].TelegramBadRequest
 
 def test_escape_special_characters():
     text = r"Escape []()~>#+=|{}.!- and \\backslashes"
@@ -173,6 +169,7 @@ def test_send_long_message_falls_back_on_bad_request():
     assert len(msg.replies) == 1
     text, mode = msg.replies[0]
     assert mode is None
+    # Fallback sends the original unescaped text
     assert text == "Hello! World."
 
 

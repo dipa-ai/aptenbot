@@ -159,7 +159,7 @@ class FakeMessage:
 def test_send_long_message_uses_markdownv2():
     """send_long_message should escape text and send with MarkdownV2."""
     msg = FakeMessage()
-    asyncio.get_event_loop().run_until_complete(send_long_message(msg, "Hello! World."))
+    asyncio.run(send_long_message(msg, "Hello! World."))
     assert len(msg.replies) == 1
     text, mode = msg.replies[0]
     assert mode == "MarkdownV2"
@@ -169,7 +169,7 @@ def test_send_long_message_uses_markdownv2():
 def test_send_long_message_falls_back_on_bad_request():
     """send_long_message should fall back to plain text when MarkdownV2 fails."""
     msg = FakeMessage(fail_markdown=True)
-    asyncio.get_event_loop().run_until_complete(send_long_message(msg, "Hello! World."))
+    asyncio.run(send_long_message(msg, "Hello! World."))
     assert len(msg.replies) == 1
     text, mode = msg.replies[0]
     assert mode is None
@@ -179,7 +179,7 @@ def test_send_long_message_falls_back_on_bad_request():
 def test_send_long_message_empty_text():
     """send_long_message should do nothing for empty text."""
     msg = FakeMessage()
-    asyncio.get_event_loop().run_until_complete(send_long_message(msg, ""))
+    asyncio.run(send_long_message(msg, ""))
     assert len(msg.replies) == 0
 
 
@@ -187,7 +187,7 @@ def test_send_long_message_preserves_code_blocks():
     """send_long_message should preserve code block content."""
     text = "Result:\n```python\nprint('hello!')\n```\nDone."
     msg = FakeMessage()
-    asyncio.get_event_loop().run_until_complete(send_long_message(msg, text))
+    asyncio.run(send_long_message(msg, text))
     assert len(msg.replies) == 1
     sent_text, mode = msg.replies[0]
     assert mode == "MarkdownV2"

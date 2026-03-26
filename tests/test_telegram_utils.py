@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import sys
 import types
@@ -17,9 +18,22 @@ telegram.error.BadRequest = BadRequest
 sys.modules.setdefault('telegram', telegram)
 sys.modules.setdefault('telegram.error', telegram.error)
 
+# Stub out aiogram.exceptions
+aiogram_mod = types.ModuleType('aiogram')
+aiogram_exceptions = types.ModuleType('aiogram.exceptions')
+class TelegramBadRequest(Exception):
+    def __init__(self, method='', message=''):
+        super().__init__(message)
+aiogram_exceptions.TelegramBadRequest = TelegramBadRequest
+aiogram_mod.exceptions = aiogram_exceptions
+sys.modules.setdefault('aiogram', aiogram_mod)
+sys.modules.setdefault('aiogram.exceptions', aiogram_exceptions)
+
 logging_config = types.ModuleType('utils.logging_config')
 class DummyLogger:
     def error(self, *args, **kwargs):
+        pass
+    def warning(self, *args, **kwargs):
         pass
 logging_config.logger = DummyLogger()
 sys.modules.setdefault('utils.logging_config', logging_config)
@@ -27,6 +41,11 @@ sys.modules.setdefault('utils.logging_config', logging_config)
 telegram_utils = importlib.import_module('utils.telegram_utils')
 escape_markdown_v2 = telegram_utils.escape_markdown_v2
 split_message = telegram_utils.split_message
+send_long_message = telegram_utils.send_long_message
+
+# Get the actual TelegramBadRequest class used by the module, so tests raise the
+# same exception type that send_long_message catches.
+_AiogramTelegramBadRequest = sys.modules['aiogram.exceptions'].TelegramBadRequest
 
 def test_escape_special_characters():
     text = r"Escape []()~>#+=|{}.!- and \\backslashes"
@@ -121,3 +140,58 @@ def test_split_message_preserves_content():
     text = "Line 1\n\nLine 2\n\nLine 3\n\n" + "x" * 5000
     result = split_message(text)
     assert "".join(result) == text
+
+
+# --- Tests for send_long_message ---
+
+class FakeMessage:
+    """Stub for aiogram Message that records reply calls."""
+    def __init__(self, fail_markdown=False):
+        self.replies = []
+        self.fail_markdown = fail_markdown
+
+    async def reply(self, text, parse_mode=None):
+        if self.fail_markdown and parse_mode == "MarkdownV2":
+            raise _AiogramTelegramBadRequest(method="sendMessage", message="Bad Request: can't parse entities")
+        self.replies.append((text, parse_mode))
+
+
+def test_send_long_message_uses_markdownv2():
+    """send_long_message should escape text and send with MarkdownV2."""
+    msg = FakeMessage()
+    asyncio.get_event_loop().run_until_complete(send_long_message(msg, "Hello! World."))
+    assert len(msg.replies) == 1
+    text, mode = msg.replies[0]
+    assert mode == "MarkdownV2"
+    assert text == "Hello\\! World\\."
+
+
+def test_send_long_message_falls_back_on_bad_request():
+    """send_long_message should fall back to plain text when MarkdownV2 fails."""
+    msg = FakeMessage(fail_markdown=True)
+    asyncio.get_event_loop().run_until_complete(send_long_message(msg, "Hello! World."))
+    assert len(msg.replies) == 1
+    text, mode = msg.replies[0]
+    assert mode is None
+    assert text == "Hello! World."
+
+
+def test_send_long_message_empty_text():
+    """send_long_message should do nothing for empty text."""
+    msg = FakeMessage()
+    asyncio.get_event_loop().run_until_complete(send_long_message(msg, ""))
+    assert len(msg.replies) == 0
+
+
+def test_send_long_message_preserves_code_blocks():
+    """send_long_message should preserve code block content."""
+    text = "Result:\n```python\nprint('hello!')\n```\nDone."
+    msg = FakeMessage()
+    asyncio.get_event_loop().run_until_complete(send_long_message(msg, text))
+    assert len(msg.replies) == 1
+    sent_text, mode = msg.replies[0]
+    assert mode == "MarkdownV2"
+    # Code block content should not have ! escaped
+    assert "print('hello!')" in sent_text
+    # Text outside code block should have . escaped
+    assert sent_text.endswith("Done\\.")

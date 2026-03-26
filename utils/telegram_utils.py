@@ -1,4 +1,5 @@
 import asyncio
+from aiogram.exceptions import TelegramBadRequest
 from telegram import Update
 from telegram.error import TelegramError, BadRequest
 from utils.logging_config import logger
@@ -61,13 +62,29 @@ def split_message(text: str, max_length: int = TELEGRAM_MESSAGE_LIMIT) -> list[s
 async def send_long_message(message, text: str) -> None:
     """Send a reply that may exceed Telegram's message size limit.
 
-    Splits the text into chunks and sends each as a separate reply.
+    Escapes the text for MarkdownV2, splits into chunks, and sends each
+    with MarkdownV2 parse mode. If Telegram rejects a formatted chunk,
+    falls back to sending the original unescaped text for that chunk.
     """
     if not text:
         return
     chunks = split_message(text)
     for chunk in chunks:
-        await message.reply(chunk)
+        escaped_chunk = escape_markdown_v2(chunk)
+        # Account for length increase after escaping: ensure each sent chunk
+        # stays within Telegram's message size limit.
+        if len(escaped_chunk) > TELEGRAM_MESSAGE_LIMIT:
+            escaped_subchunks = split_message(escaped_chunk, TELEGRAM_MESSAGE_LIMIT)
+        else:
+            escaped_subchunks = [escaped_chunk]
+
+        for subchunk in escaped_subchunks:
+            try:
+                await message.reply(subchunk, parse_mode="MarkdownV2")
+            except TelegramBadRequest:
+                logger.warning("MarkdownV2 parse failed, falling back to plain text")
+                # Send original unescaped chunk to avoid visible backslashes
+                await message.reply(chunk)
 
 
 def escape_markdown_v2(text: str) -> str:
